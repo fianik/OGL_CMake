@@ -61,7 +61,7 @@ int main()
     // Конфигурирование глобального состояния OpenGL.
     glEnable(GL_DEPTH_TEST);
 
-    Shader ourShader("../../res/shaders/vertexShader.txt", "../../res/shaders/fragShader.txt");
+    Shader ourShader("../res/shaders/vertexShader.txt", "../res/shaders/fragShader.txt");
 
     // Указание вершин (и буфера(ов)) и настройка вершинных атрибутов
     float vertices[] = {
@@ -151,7 +151,7 @@ int main()
     // Загрузка изображения, создание текстуры и генерирование мипмап-уровней
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(true); // указываем stb_image.h на то, чтобы перевернуть для загруженной текстуры ось y
-    unsigned char* data = stbi_load("../../res/models/wooden_container.jpg", &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load("../res/models/wooden_container.jpg", &width, &height, &nrChannels, 0);
     if (data)
     {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
