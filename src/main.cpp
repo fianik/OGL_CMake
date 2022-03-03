@@ -8,6 +8,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "rendering/shader_s.h"
+#include "rendering/camera.h"
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_glfw.h>
@@ -20,10 +21,24 @@
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow* window);
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 
 // Константы
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+
+
+// Камера
+Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+float lastX = SCR_WIDTH / 2.0f;
+float lastY = SCR_HEIGHT / 2.0f;
+
+bool firstMouse = true;
+
+// Тайминги
+float deltaTime = 0.0f;	// время между текущим кадром и последним кадром
+float lastFrame = 0.0f;
 
 int main()
 {
@@ -43,6 +58,12 @@ int main()
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+
+    // Сообщаем GLFW, чтобы он захватил наш курсор
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -61,6 +82,7 @@ int main()
     // Конфигурирование глобального состояния OpenGL.
     glEnable(GL_DEPTH_TEST);
 
+    // Компилирование нашей шейдерной программы
     Shader ourShader("../res/shaders/vertexShader.txt", "../res/shaders/fragShader.txt");
 
     // Указание вершин (и буфера(ов)) и настройка вершинных атрибутов
@@ -142,10 +164,9 @@ int main()
     // Координатные атрибуты
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    // Цветовые атрибуты
+    // Атрибуты текстурных координа
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-
 
     // Загрузка и создание текстур
     unsigned int texture1;
@@ -181,17 +202,22 @@ int main()
     ourShader.use();
     ourShader.setInt("texture1", 0);
 
-
     bool show_demo_window = true;
     bool show_another_window = false;
+    //bool loop = true;
+    float angle;
     //ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // Цикл рендеринга
     while (!glfwWindowShouldClose(window))
     {
+        // Логическая часть работы со временем для каждого кадра
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
         // Обработка ввода
         processInput(window);
-
 
         // Рендеринг
         glClearColor(0.2f, 0.1f, 0.3f, 1.0f);
@@ -208,22 +234,24 @@ int main()
         // Активируем шейдер
         ourShader.use();
 
+        // Передаем шейдеру матрицу проекции (поскольку проекционная матрица редко меняется, то нет необходимости делать это для каждого кадра)
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        ourShader.setMat4("projection", projection);
+
+        /*
         // Создаем преобразование
         glm::mat4 view = glm::mat4(1.0f);
         glm::mat4 projection = glm::mat4(1.0f);
         projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
-        /*
-        // Получаем местоположение uniform-матриц...
-        unsigned int modelLoc = glGetUniformLocation(ourShader.ID, "model");
-        unsigned int viewLoc = glGetUniformLocation(ourShader.ID, "view");
-        // ...передаем их в шейдеры (разными способами)
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &view[0][0]);*/
-
 
         // Примечание: В настоящее время мы устанавливаем матрицу проекции для каждого кадра, но поскольку матрица проекции редко меняется, то рекомендуется устанавливать её (единожды) вне основного цикла
         ourShader.setMat4("projection", projection);
+        ourShader.setMat4("view", view);
+        */
+
+        // Создаем преобразование камеры/вида
+        glm::mat4 view = camera.GetViewMatrix();
         ourShader.setMat4("view", view);
 
         // Рендерим ящик(и)
@@ -233,28 +261,26 @@ int main()
             // вычисляем матрицу модели для каждого объекта и передаём ее в шейдер до отрисовки
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, cubePositions[i]);
-            float angle = 20.0f * (i + 1);
-            //model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+            angle = 20.0f * (i + 1);
             model = glm::rotate(model, (float)glfwGetTime() * glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
             ourShader.setMat4("model", model);
 
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
-        //static float clear_color[3];
-        //static float f = 0.0f;
         static int i = 0.0f;
-        //static int counter = 0;
 
-        ImGui::Begin("FPS");                          // Create a window called "Hello, world!" and append into it.
-
-        //ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-
-        //ImGui::SliderFloat("float", &f, 12.0f, 120.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-        ImGui::SliderInt("float", &i, 0.0f, 120.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+        //imgui
+        ImGui::Begin("FPS");                         
+        ImGui::SliderInt("float", &i, 0.0f, 120.0f);            
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        ImGui::End();
+        
 
+        /*if (ImGui::Button("Start/Stop"))
+        {
+            loop =! loop;
+        }*/
+        ImGui::End();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -270,10 +296,6 @@ int main()
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
 
-    /*ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();*/
-
     // glfw: завершение, освобождение всех выделенных ранее GLFW-ресурсов
     glfwTerminate();
     return 0;
@@ -284,6 +306,15 @@ void processInput(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.ProcessKeyboard(FORWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.ProcessKeyboard(BACKWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.ProcessKeyboard(LEFT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
 // glfw: всякий раз, когда изменяются размеры окна (пользователем или операционной системой), вызывается данная callback-функция
@@ -292,4 +323,29 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     // Убеждаемся, что окно просмотра соответствует новым размерам окна.
     // Обратите внимание, высота и ширина будут значительно больше, чем указано, на Retina-дисплеях
     glViewport(0, 0, width, height);
+}
+
+// glfw: всякий раз, когда перемещается мышь, вызывается данная callback-функция
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos; // перевернуто, так как y-координаты идут снизу вверх
+
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.ProcessMouseMovement(xoffset, yoffset);
+}
+
+// glfw: всякий раз, когда прокручивается колесико мыши, вызывается данная callback-функция
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    camera.ProcessMouseScroll(yoffset);
 }
